@@ -1,11 +1,5 @@
-import OpenOrders from "@/components/OpenOrders";
-import HistoryTable from "@/components/HistoryTable";
+import BottomOrders from "@/components/BottomOrders";
 
 export default function OrdersPage() {
-  return (
-    <div className="space-y-6">
-      <OpenOrders />
-      <HistoryTable />
-    </div>
-  );
+  return <div className="p-3"><BottomOrders /></div>;
 }

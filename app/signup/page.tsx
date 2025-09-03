@@ -15,15 +15,12 @@ export default function SignupPage() {
       await api.signup({ email, password });
       alert("Signup ok, please login");
       router.push("/login");
-    } catch (e: any) {
-      alert(e?.message || "Signup failed");
-    } finally {
-      setBusy(false);
-    }
+    } catch (e:any) { alert(e?.message || "Signup failed"); }
+    finally { setBusy(false); }
   }
 
   return (
-    <div className="max-w-md mx-auto card p-6">
+    <div className="max-w-md mx-auto card p-6 mt-10">
       <h1 className="text-lg font-semibold mb-4">Signup</h1>
       <input className="w-full mb-2 px-3 py-2 rounded-xl bg-neutral-800 border border-neutral-700"
         placeholder="email" value={email} onChange={e=>setEmail(e.target.value)} />
