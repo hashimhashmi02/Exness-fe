@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { priceStr, dollars } from "@/lib/format";
-
 export default function HistoryTable() {
   const [rows, setRows] = useState<any[]>([]);
   useEffect(() => { api.closedTrades().then(r => setRows(r.trades)); }, []);

@@ -1,67 +1,163 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { priceStr, dollars } from "@/lib/format";
+
+/** Shape we expect back from GET /api/v1/trades/open */
+type OpenOrder = {
+  orderId: string;
+  type: "BUY" | "SELL";
+  margin: number;         // integer cents
+  leverage: number;
+  openPrice: number;      // integer price (scaled by decimals)
+  stopLoss: number | null;
+  takeProfit: number | null;
+  openedAt: string | Date;
+  // Optional (if your BE returns it)
+  symbol?: string;        // e.g. "BTCUSDT"
+  decimals?: number;      // if BE sends it; else we assume 4
+};
 
 export default function BottomOrders() {
-  const [open, setOpen] = useState<any[]>([]);
-  const [closed, setClosed] = useState<any[]>([]);
+  const [rows, setRows] = useState<OpenOrder[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = () => {
-    api.openTrades().then(r => setOpen(r.trades));
-    api.closedTrades().then(r => setClosed(r.trades));
-  };
-  useEffect(() => { load(); }, []);
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.openTrades();
+      setRows(res.trades ?? []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load orders");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  function fmtMoneyCents(cents: number) {
+    return `$${(cents / 100).toFixed(2)}`;
+  }
+
+  function fmtPrice(intPrice: number, decimals?: number) {
+    const dec = Number.isFinite(decimals) ? Number(decimals) : 4;
+    return (intPrice / 10 ** dec).toFixed(Math.min(6, Math.max(2, dec)));
+  }
+
+  function fmtTime(t: string | Date) {
+    const d = typeof t === "string" ? new Date(t) : t;
+    if (!d || isNaN(d.getTime())) return "—";
+    return d.toLocaleString(undefined, { hour12: false });
+  }
+
+  async function closeOne(id: string) {
+    setBusyId(id);
+    try {
+      await api.closeTrade(id);
+      await load();
+    } catch (e: any) {
+      alert(e?.message || "Close failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-3 py-2 border-b border-neutral-800 flex gap-2 text-sm">
-        <div className="font-medium">Orders</div>
-        <button onClick={load} className="ml-auto px-3 py-1.5 rounded-xl bg-neutral-800 border border-neutral-700">Refresh</button>
+    <div className="card p-3 mt-4">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-sm opacity-70">Open Orders</div>
+        <div className="flex items-center gap-2">
+          <button
+            className="px-3 py-1 rounded-lg bg-neutral-800 border border-neutral-700"
+            onClick={load}
+            disabled={loading}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
-      <div className="p-3 overflow-auto text-sm">
-        <div className="mb-2 opacity-70">Open</div>
-        <table className="w-full mb-4">
-          <thead className="text-xs opacity-60">
-            <tr><th className="text-left">Type</th><th>Lev</th><th>Open</th><th>Margin</th><th></th></tr>
-          </thead>
-          <tbody>
-            {open.map(r => (
-              <tr key={r.orderId} className="border-t border-neutral-800">
-                <td className="py-2">{r.type}</td>
-                <td className="text-center">{r.leverage}x</td>
-                <td className="text-center">{priceStr(r.openPrice,4)}</td>
-                <td className="text-center">${dollars(r.margin)}</td>
-                <td className="text-right">
-                  <button className="px-3 py-1 rounded-lg bg-neutral-800 border border-neutral-700"
-                    onClick={() => api.closeTrade(r.orderId).then(load)}>Close</button>
-                </td>
-              </tr>
-            ))}
-            {!open.length && <tr><td className="py-4 text-center opacity-60" colSpan={5}>No open orders</td></tr>}
-          </tbody>
-        </table>
+      {error && (
+        <div className="text-sm text-red-400 mb-2">
+          {error}
+        </div>
+      )}
 
-        <div className="mb-2 opacity-70">Closed</div>
-        <table className="w-full">
-          <thead className="text-xs opacity-60">
-            <tr><th className="text-left">Type</th><th>Lev</th><th>Open</th><th>Close</th><th>PnL</th></tr>
-          </thead>
-          <tbody>
-            {closed.map(r => (
-              <tr key={r.orderId} className="border-t border-neutral-800">
-                <td className="py-2">{r.type}</td>
-                <td className="text-center">{r.leverage}x</td>
-                <td className="text-center">{priceStr(r.openPrice,4)}</td>
-                <td className="text-center">{priceStr(r.closePrice,4)}</td>
-                <td className={`text-center ${r.pnl>=0?"text-emerald-400":"text-rose-400"}`}>${dollars(r.pnl)}</td>
+      {loading ? (
+        <div className="text-sm opacity-70 py-6">Loading open orders…</div>
+      ) : rows.length === 0 ? (
+        <div className="text-sm opacity-70 py-6">No open orders.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left opacity-70 border-b border-neutral-800">
+              <tr>
+                <th className="py-2 pr-2">Order ID</th>
+                <th className="py-2 pr-2">Symbol</th>
+                <th className="py-2 pr-2">Side</th>
+                <th className="py-2 pr-2 text-right">Margin</th>
+                <th className="py-2 pr-2 text-right">Leverage</th>
+                <th className="py-2 pr-2 text-right">Open Price</th>
+                <th className="py-2 pr-2 text-right">Stop Loss</th>
+                <th className="py-2 pr-2 text-right">Take Profit</th>
+                <th className="py-2 pr-2">Opened</th>
+                <th className="py-2 pr-2 text-right">Action</th>
               </tr>
-            ))}
-            {!closed.length && <tr><td className="py-4 text-center opacity-60" colSpan={5}>No history yet</td></tr>}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const dec = (r as any).decimals as number | undefined; // if BE returns it
+                const sym = r.symbol ?? "—";
+                const shortId = r.orderId.slice(0, 6) + "…" + r.orderId.slice(-4);
+                return (
+                  <tr key={r.orderId} className="border-b border-neutral-900">
+                    <td className="py-2 pr-2">{shortId}</td>
+                    <td className="py-2 pr-2">{sym}</td>
+                    <td className="py-2 pr-2">
+                      <span
+                        className={
+                          r.type === "BUY"
+                            ? "text-emerald-400 font-medium"
+                            : "text-rose-400 font-medium"
+                        }
+                      >
+                        {r.type}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-2 text-right">{fmtMoneyCents(r.margin)}</td>
+                    <td className="py-2 pr-2 text-right">{r.leverage}x</td>
+                    <td className="py-2 pr-2 text-right">
+                      {fmtPrice(r.openPrice, dec)}
+                    </td>
+                    <td className="py-2 pr-2 text-right">
+                      {r.stopLoss == null ? "—" : fmtPrice(r.stopLoss, dec)}
+                    </td>
+                    <td className="py-2 pr-2 text-right">
+                      {r.takeProfit == null ? "—" : fmtPrice(r.takeProfit, dec)}
+                    </td>
+                    <td className="py-2 pr-2">{fmtTime(r.openedAt)}</td>
+                    <td className="py-2 pr-2 text-right">
+                      <button
+                        disabled={busyId === r.orderId}
+                        onClick={() => closeOne(r.orderId)}
+                        className="px-3 py-1 rounded-lg bg-neutral-800 border border-neutral-700 disabled:opacity-50"
+                      >
+                        {busyId === r.orderId ? "Closing…" : "Close"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
