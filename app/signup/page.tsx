@@ -2,13 +2,11 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
-
 export default function SignupPage() {
   const [email, setEmail] = useState("u@ex.com");
   const [password, setPassword] = useState("secret123");
   const [busy, setBusy] = useState(false);
   const router = useRouter();
-
   async function submit() {
     try {
       setBusy(true);
